@@ -1,0 +1,320 @@
+:root[data-theme-mode="dark"] {
+    --callout-bg-mix: transparent 85%;
+    --callout-text-mix: white 10%;
+}
+
+:root[data-theme-mode="light"] {
+    --callout-bg-mix: white 92%;
+    --callout-text-mix: black 10%;
+}
+
+.callout[data-type="NodeCallout"] {
+    padding: 4px;
+    border: none !important;
+    /* 去除外边框 */
+    box-shadow: none !important;
+    /* 同时去除可能的阴影（部分主题有） */
+    outline: none !important;
+    /* 防止焦点时出现轮廓线 */
+
+    .callout-title {
+        font-weight: bold;
+        width: 100%;
+    }
+
+    .callout-title[contenteditable="true"]:focus,
+    .callout-title.is-title-editing {
+        white-space: normal !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+        word-break: break-all;
+        outline: none;
+        background: color-mix(in srgb, currentColor, transparent 95%);
+        /* 轻微高亮提示编辑 */
+        border-radius: 4px;
+    }
+
+    .callout-icon {
+        display: none;
+    }
+
+    /* 替换侧线为 icon */
+    &::before {
+        display: inline-block;
+        overflow: visible !important;
+        vertical-align: middle;
+        width: 20px;
+        height: 20px;
+        background-color: currentColor;
+        margin-right: 10px;
+        mask-repeat: no-repeat;
+        top: 7px;
+        left: 10px;
+        cursor: pointer;
+        z-index: 1;
+    }
+
+    .callout-info {
+        padding-left: 30px;
+
+        .callout-title {
+            font-size: 100%;
+            padding-right: 22px;
+            /* 多行标题压缩 */
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+    }
+
+    /* 折叠样式 */
+    &[fold="1"] {
+        height: auto !important;
+        overflow: visible !important;
+        padding-top: 6px;
+        padding-bottom: 8px !important;
+        /* 调整折叠后的底部间距 */
+        opacity: 1 !important;
+        background-image: none !important;
+
+        /* 去除斜纹 */
+        &::before {
+            top: 9px;
+        }
+
+        &>*:not(:first-child) {
+            display: none;
+        }
+    }
+
+    &>.callout-info::after {
+        content: '';
+        position: absolute;
+        right: 0.5em;
+        top: 18px;
+        width: 1.25em;
+        height: 1.25em;
+        mask-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIGNsYXNzPSJsdWNpZGUgbHVjaWRlLWNoZXZyb24tcmlnaHQiPjxwYXRoIGQ9Im05IDE4IDYtNi02LTYiLz48L3N2Zz4=");
+        mask-repeat: no-repeat;
+        mask-size: contain;
+        transform: translateY(-50%) rotate(90deg);
+        transition: transform 0.2s ease-in-out;
+        background-color: currentColor;
+        cursor: pointer;
+    }
+
+    &[fold="1"]>.callout-info::after {
+        transform: translateY(-50%) rotate(0deg);
+    }
+
+    /* --- 颜色处理部分 --- */
+
+    /* 通用样式：使用 color-mix 混合背景色，避免嵌套变深 */
+    &[data-subtype] {
+        background-color: color-mix(in srgb,
+                var(--b3-callout-note),
+                var(--callout-bg-mix)) !important;
+
+        /* 标题颜色 */
+        &,
+        >.callout-info>.callout-title {
+            color: color-mix(in srgb,
+                    var(--b3-callout-note),
+                    var(--callout-text-mix)) !important;
+        }
+
+        /* 正文颜色 */
+        >.callout-info~*,
+        >.callout-info * {
+            color: var(--b3-theme-on-background) !important;
+        }
+
+        /* ICON: 已修改为笔 (Pencil) */
+        &::before {
+            mask: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIGNsYXNzPSJsdWNpZGUgbHVjaWRlLXBlbmNpbCI+PHBhdGggZD0iTTE3IDNhMi44NSAyLjgzIDAgMSAxIDQgNEw3LjUgMjAuNSAyIDIybDEuNS01LjVaIi8+PHBhdGggZD0ibTE1IDUgNCA0Ii8+PC9zdmc+");
+            mask-size: cover;
+        }
+
+        /* 折叠箭头颜色 */
+        &>.callout-info::after {
+            background-color: color-mix(in srgb,
+                    var(--b3-callout-note),
+                    var(--callout-text-mix)) !important;
+        }
+    }
+
+    /* --- 原有类型 --- */
+    &[data-subtype="TIP"] {
+        background-color: color-mix(in srgb, var(--b3-callout-tip), var(--callout-bg-mix)) !important;
+
+        &,
+        >.callout-info>.callout-title {
+            color: color-mix(in srgb, var(--b3-callout-tip), var(--callout-text-mix)) !important;
+        }
+
+        >.callout-info~*,
+        >.callout-info * {
+            color: var(--b3-theme-on-background) !important;
+        }
+
+        &::before {
+            mask: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyOCIgaGVpZ2h0PSIyOCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIxLjcxNDI4NTcxNDI4NTcxNDIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgY2xhc3M9Imx1Y2lkZSBsdWNpZGUtbGlnaHRidWxiIj48cGF0aCBkPSJNMTUgMTRjLjItMSAuNy0xLjcgMS41LTIuNSAxLS45IDEuNS0yLjIgMS41LTMuNUE2IDYgMCAwIDAgNiA4YzAgMSAuMiAyLjIgMS41IDMuNS43LjcgMS4zIDEuNSAxLjUgMi41Ii8+PHBhdGggZD0iTTkgMThoNiIvPjxwYXRoIGQ9Ik0xMCAyMmg0Ii8+PC9zdmc+");
+            mask-size: cover;
+        }
+
+        &>.callout-info::after {
+            background-color: color-mix(in srgb, var(--b3-callout-tip), var(--callout-text-mix)) !important;
+        }
+    }
+
+    &[data-subtype="IMPORTANT"] {
+        background-color: color-mix(in srgb, var(--b3-callout-important), var(--callout-bg-mix)) !important;
+
+        &,
+        >.callout-info>.callout-title {
+            color: color-mix(in srgb, var(--b3-callout-important), var(--callout-text-mix)) !important;
+        }
+
+        >.callout-info~*,
+        >.callout-info * {
+            color: var(--b3-theme-on-background) !important;
+        }
+
+        &::before {
+            mask: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIGNsYXNzPSJsdWNpZGUgbHVjaWRlLW1lc3NhZ2Utc3F1YXJlLXdhcm5pbmctaWNvbiBsdWNpZGUtbWVzc2FnZS1zcXVhcmUtd2FybmluZyI+PHBhdGggZD0iTTIxIDE1YTIgMiAwIDAgMS0yIDJIN2wtNCA0VjVhMiAyIDAgMCAxIDItMmgxNGEyIDIgMCAwIDEgMiAyeiIvPjxwYXRoIGQ9Ik0xMiA3djIiLz48cGF0aCBkPSJNMTIgMTNoLjAxIi8+PC9zdmc+");
+            mask-size: cover;
+        }
+
+        &>.callout-info::after {
+            background-color: color-mix(in srgb, var(--b3-callout-important), var(--callout-text-mix)) !important;
+        }
+    }
+
+    &[data-subtype="WARNING"] {
+        background-color: color-mix(in srgb, var(--b3-callout-warning), var(--callout-bg-mix)) !important;
+
+        &,
+        >.callout-info>.callout-title {
+            color: color-mix(in srgb, var(--b3-callout-warning), var(--callout-text-mix)) !important;
+        }
+
+        >.callout-info~*,
+        >.callout-info * {
+            color: var(--b3-theme-on-background) !important;
+        }
+
+        &::before {
+            mask: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIGNsYXNzPSJsdWNpZGUgbHVjaWRlLXRyaWFuZ2xlLWFsZXJ0LWljb24gbHVjaWRlLXRyaWFuZ2xlLWFsZXJ0Ij48cGF0aCBkPSJtMjEuNzMgMTgtOC0xNGEyIDIgMCAwIDAtMy40OCAwbC04IDE0QTIgMiAwIDAgMCA0IDIxaDE2YTIgMiAwIDAgMCAxLjczLTMiLz48cGF0aCBkPSJNMTIgOXY0Ii8+PHBhdGggZD0iTTEyIDE3aC4wMSIvPjwvc3ZnPg==");
+            mask-size: cover;
+        }
+
+        &>.callout-info::after {
+            background-color: color-mix(in srgb, var(--b3-callout-warning), var(--callout-text-mix)) !important;
+        }
+    }
+
+    &[data-subtype="CAUTION"] {
+        background-color: color-mix(in srgb, var(--b3-callout-caution), var(--callout-bg-mix)) !important;
+
+        &,
+        >.callout-info>.callout-title {
+            color: color-mix(in srgb, var(--b3-callout-caution), var(--callout-text-mix)) !important;
+        }
+
+        >.callout-info~*,
+        >.callout-info * {
+            color: var(--b3-theme-on-background) !important;
+        }
+
+        &::before {
+            mask: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyOCIgaGVpZ2h0PSIyOCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIxLjcxNDI4NTcxNDI4NTcxNDIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgY2xhc3M9Imx1Y2lkZSBsdWNpZGUtb2N0YWdvbi1hbGVydCI+PHBhdGggZD0iTTEyIDE2aC4wMSIvPjxwYXRoIGQ9Ik0xMiA4djQiLz48cGF0aCBkPSJNMTUuMzEyIDJhMiAyIDAgMCAxIDEuNDE0LjU4Nmw0LjY4OCA0LjY4OEEyIDIgMCAwIDEgMjIgOC42ODh2Ni42MjRhMiAyIDAgMCAxLS41ODYgMS40MTRsLTQuNjg4IDQuNjg4YTIgMiAwIDAgMS0xLjQxNC41ODZIOC42ODhhMiAyIDAgMCAxLTEuNDE0LS41ODZsLTQuNjg4LTQuNjg4QTIgMiAwIDAgMSAyIDE1LjMxMlY4LjY4OGEyIDIgMCAwIDEgLjU4Ni0xLjQxNGw0LjY4OC00LjY4OEEyIDIgMCAwIDEgOC42ODggMnoiLz48L3N2Zz4=");
+            mask-size: cover;
+        }
+
+        &>.callout-info::after {
+            background-color: color-mix(in srgb, var(--b3-callout-caution), var(--callout-text-mix)) !important;
+        }
+    }
+
+    /* --- 新增类型: QUOTE (灰色) --- */
+    &[data-subtype="QUOTE" i] {
+        /* i 表示 "insensitive"（不区分大小写） */
+        --local-color: #7f8c8d;
+        /* 自定义灰色 */
+
+        background-color: color-mix(in srgb, var(--local-color), var(--callout-bg-mix)) !important;
+
+        &,
+        >.callout-info>.callout-title {
+            color: color-mix(in srgb, var(--local-color), var(--callout-text-mix)) !important;
+        }
+
+        >.callout-info~*,
+        >.callout-info * {
+            color: var(--b3-theme-on-background) !important;
+        }
+
+        &::before {
+            /* Quote Icon */
+            mask: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIGNsYXNzPSJsdWNpZGUgbHVjaWRlLXF1b3RlLWljb24gbHVjaWRlLXF1b3RlIj48cGF0aCBkPSJNMTYgM2EyIDIgMCAwIDAtMiAydjZhMiAyIDAgMCAwIDIgMiAxIDEgMCAwIDEgMSAxdjFhMiAyIDAgMCAxLTIgMiAxIDEgMCAwIDAtMSAxdjJhMSAxIDAgMCAwIDEgMSA2IDYgMCAwIDAgNi02VjVhMiAyIDAgMCAwLTItMnoiLz48cGF0aCBkPSJNNSAzYTIgMiAwIDAgMC0yIDJ2NmEyIDIgMCAwIDAgMiAyIDEgMSAwIDAgMSAxIDF2MWEyIDIgMCAwIDEtMiAyIDEgMSAwIDAgMC0xIDF2MmExIDEgMCAwIDAgMSAxIDYgNiAwIDAgMCA2LTZWNWEyIDIgMCAwIDAtMi0yeiIvPjwvc3ZnPg==");
+            mask-size: cover;
+        }
+
+        &>.callout-info::after {
+            background-color: color-mix(in srgb, var(--local-color), var(--callout-text-mix)) !important;
+        }
+    }
+
+    /* --- 新增类型: QUESTION (同WARNING样式) --- */
+    &[data-subtype="QUESTION" i] {
+        background-color: color-mix(in srgb, var(--b3-callout-warning), var(--callout-bg-mix)) !important;
+
+        &,
+        >.callout-info>.callout-title {
+            color: color-mix(in srgb, var(--b3-callout-warning), var(--callout-text-mix)) !important;
+        }
+
+        >.callout-info~*,
+        >.callout-info * {
+            color: var(--b3-theme-on-background) !important;
+        }
+
+        &::before {
+            /* Question Circle Icon */
+            mask: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIGNsYXNzPSJsdWNpZGUgbHVjaWRlLWNpcmNsZS1oZWxwIj48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSIxMCIvPjxwYXRoIGQ9Ik05LjA5IDlhMyAzIDAgMCAxIDUuODMgMWMwIDItMyAzLTMgMyIvPjxwYXRoIGQ9Ik0xMiAxN2guMDEiLz48L3N2Zz4=");
+            mask-size: cover;
+        }
+
+        &>.callout-info::after {
+            background-color: color-mix(in srgb, var(--b3-callout-warning), var(--callout-text-mix)) !important;
+        }
+    }
+
+    /* --- 新增类型: INFO (蓝色) --- */
+    &[data-subtype="INFO" i] {
+        --local-color: #086ddd;
+        /* 自定义蓝色 */
+
+        background-color: color-mix(in srgb, var(--local-color), var(--callout-bg-mix)) !important;
+
+        &,
+        >.callout-info>.callout-title {
+            color: color-mix(in srgb, var(--local-color), var(--callout-text-mix)) !important;
+        }
+
+        >.callout-info~*,
+        >.callout-info * {
+            color: var(--b3-theme-on-background) !important;
+        }
+
+        &::before {
+            /* Info Icon */
+            mask: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIGNsYXNzPSJsdWNpZGUgbHVjaWRlLWluZm8iPjxjaXJjbGUgY3g9IjEyIiBjeT0iMTIiIHI9IjEwIi8+PHBhdGggZD0iTTEyIDE2di00Ii8+PHBhdGggZD0iTTEyIDhoLjAxIi8+PC9zdmc+");
+            mask-size: cover;
+        }
+
+        &>.callout-info::after {
+            background-color: color-mix(in srgb, var(--local-color), var(--callout-text-mix)) !important;
+        }
+    }
+}
