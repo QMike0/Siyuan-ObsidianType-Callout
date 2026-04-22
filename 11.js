@@ -1,15 +1,16 @@
-// version 0.0.3
-// 0.0.3 增加样式Info、Quote、Question
+// version 0.0.4
+// 0.0.4 修复Callout中无正文时的一些操作会触发的bug，并优化”空Callout回车键删除“后的撤回操作
+// 0.0.3 增加样式 Info、Quote、Question
 // 0.0.2 实现折叠/展开状态的持久化
 
 (function () {
   "use strict";
-  const DEBUG = true;
+  const DEBUG = false;
+  const STARTUP_FLAG = "__calloutEnhanceInitialized";
   function log(...args) {
     if (DEBUG) console.log("[CalloutEnhance]", ...args);
   }
 
-  // 修改了这里：增加了 Quote 和 Question
   const CALLOUT_TYPES = [
     { type: 'Info', label: 'Info', icon: 'ℹ️' },
     { type: "NOTE", label: "Note", icon: "🖊️" },
@@ -20,6 +21,155 @@
     { type: "CAUTION", label: "Caution", icon: "🚨" },
     { type: "Question", label: "Question", icon: "❓" },
   ];
+
+  const deletingBlockIds = new Set();
+  const deletedBlockIds = new Set();
+
+  function placeCaretAtEnd(el) {
+    if (!el) return;
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    range.collapse(false);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+
+  function wait(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  function closestTitleFromTarget(target) {
+    if (!target) return null;
+    const element = target.nodeType === Node.TEXT_NODE ? target.parentElement : target;
+    return element?.closest?.('.callout-title') || null;
+  }
+
+  function hasCalloutBody(block) {
+    function isMeaningfulNode(node) {
+      if (!node) return false;
+
+      if (node.nodeType === Node.TEXT_NODE) {
+        return node.textContent.replace(/[\u200B\u00A0]/g, "").trim().length > 0;
+      }
+
+      if (node.nodeType !== Node.ELEMENT_NODE) return false;
+
+      const el = node;
+      const tagName = el.tagName?.toUpperCase?.() || "";
+
+      if (tagName === "BR") return false;
+      if (el.classList?.contains("protyle-attr")) return false;
+
+      // Non-text content nodes that should count as body.
+      if (el.matches?.("img,video,audio,iframe,svg,canvas,table,hr,math,pre,code,input,button,select,textarea,embed,object")) {
+        return true;
+      }
+
+      return Array.from(el.childNodes).some(isMeaningfulNode);
+    }
+
+    if (!block) return false;
+    return Array.from(block.children).some((child) => {
+      if (child.classList?.contains("callout-title")) return false;
+      if (child.classList?.contains("callout-info")) return false;
+      if (child.classList?.contains("protyle-attr")) return false;
+      return isMeaningfulNode(child);
+    });
+  }
+
+  function getSelectionCallout() {
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return null;
+    const node = sel.focusNode || sel.anchorNode;
+    const element = node?.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+    return element?.closest?.('.callout[data-type="NodeCallout"]') || null;
+  }
+
+  function getCalloutFromEventTarget(target) {
+    if (!target) return null;
+    const element = target.nodeType === Node.TEXT_NODE ? target.parentElement : target;
+    return element?.closest?.('.callout[data-type="NodeCallout"]') || null;
+  }
+
+  function triggerBackspaceForEmptyCallout(block, sourceTarget) {
+    if (!block) return false;
+
+    const sourceEl = sourceTarget?.nodeType === Node.TEXT_NODE ? sourceTarget.parentElement : sourceTarget;
+    const activeEl = document.activeElement;
+    const activeEditable = activeEl?.isContentEditable ? activeEl : null;
+    const sourceEditable = sourceEl?.closest?.('[contenteditable="true"]') || null;
+    const target = sourceEditable || activeEditable || block.querySelector('[contenteditable="true"]');
+    if (!target) return false;
+
+    const keydownEvent = new KeyboardEvent("keydown", {
+      key: "Backspace",
+      code: "Backspace",
+      keyCode: 8,
+      which: 8,
+      bubbles: true,
+      cancelable: true,
+    });
+    target.dispatchEvent(keydownEvent);
+
+    const keyupEvent = new KeyboardEvent("keyup", {
+      key: "Backspace",
+      code: "Backspace",
+      keyCode: 8,
+      which: 8,
+      bubbles: true,
+      cancelable: true,
+    });
+    target.dispatchEvent(keyupEvent);
+
+    return true;
+  }
+
+
+  async function deleteCallout(block) {
+    if (!block?.dataset?.nodeId) return false;
+    const blockId = block.dataset.nodeId;
+    if (!document.body.contains(block)) return true;
+    if (deletingBlockIds.has(blockId)) return true;
+
+    deletingBlockIds.add(blockId);
+    block.dataset.deleting = "true";
+
+    try {
+      const response = await fetch('/api/transactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session: block.closest('.protyle')?.dataset.id || '',
+          app: window.siyuan.config.system.id,
+          transactions: [
+            {
+              doOperations: [
+                {
+                  action: 'delete',
+                  id: blockId,
+                },
+              ],
+            },
+          ],
+        }),
+      });
+      const result = await response.json();
+      if (result.code === 0) {
+        log('Empty callout deleted on Enter by transaction:', blockId);
+        deletedBlockIds.add(blockId);
+        deletingBlockIds.delete(blockId);
+        setTimeout(() => deletedBlockIds.delete(blockId), 60 * 1000);
+        return true;
+      }
+    } catch (error) {
+      console.error('Delete fallback Error:', error);
+    }
+
+    deletingBlockIds.delete(blockId);
+    delete block.dataset.deleting;
+    return false;
+  }
 
   /**
    * 通过官方 API 设置块的 fold 属性（写入 IAL）
@@ -59,6 +209,10 @@
   async function syncBlock(blockElement) {
     if (!blockElement || !blockElement.dataset.nodeId) return;
     const blockId = blockElement.dataset.nodeId;
+    if (deletedBlockIds.has(blockId)) return;
+    if (deletingBlockIds.has(blockId)) return;
+    if (blockElement.dataset.deleting === "true") return;
+    if (!document.body.contains(blockElement)) return;
     const protyle = blockElement.closest(".protyle");
     if (!protyle) return;
 
@@ -157,19 +311,29 @@
   function initCallout(block) {
     if (block.dataset.enhanced === "true") return;
 
+    if (block.dataset?.nodeId) {
+      deletedBlockIds.delete(block.dataset.nodeId);
+      deletingBlockIds.delete(block.dataset.nodeId);
+      delete block.dataset.deleting;
+    }
+
     const titleEl = block.querySelector(".callout-title");
     if (titleEl) {
       titleEl.contentEditable = "true";
       titleEl.spellcheck = false;
       titleEl.addEventListener("focus", () => {
         titleEl.classList.add("is-title-editing");
+        placeCaretAtEnd(titleEl);
       });
       titleEl.addEventListener("blur", () => {
         titleEl.classList.remove("is-title-editing");
+        if (block.dataset.deleting === "true") return;
+        if (!hasCalloutBody(block)) return;
         syncBlock(block);
       });
       titleEl.addEventListener('keydown', async (e) => {
         if (e.key === 'Enter') {
+          if (!hasCalloutBody(block)) return;
           e.preventDefault();
           e.stopPropagation();
           e.stopImmediatePropagation();
@@ -266,15 +430,62 @@
     // 3. 点击 Title 区域
     const titleEl = e.target.closest(".callout-title");
     if (titleEl) {
+      e.preventDefault();
       e.stopPropagation();
+      e.stopImmediatePropagation();
       if (document.activeElement !== titleEl) {
         titleEl.focus();
+        placeCaretAtEnd(titleEl);
         log("Title Intercepted & Focused");
       }
     }
   }
 
   function startup() {
+    if (window[STARTUP_FLAG]) return;
+    window[STARTUP_FLAG] = true;
+
+    const guardTitleEvents = (e) => {
+      const titleEl = closestTitleFromTarget(e.target);
+      if (!titleEl) return;
+
+      if (e.type === "keydown" && e.key === "Enter") {
+        return;
+      }
+
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+    };
+
+    const guardEmptyCalloutEnter = async (e) => {
+      if (e.key !== "Enter") return;
+
+      const callout =
+        getCalloutFromEventTarget(e.target) ||
+        getSelectionCallout();
+      if (!callout) return;
+      if (callout.dataset.deleting === "true") return;
+      if (hasCalloutBody(callout)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      triggerBackspaceForEmptyCallout(callout, e.target);
+      await wait(120);
+      if (document.body.contains(callout)) {
+        await deleteCallout(callout);
+      }
+      log('Global Enter rerouted to minimal Backspace flow for empty callout with delete fallback');
+      return;
+    };
+
+    document.addEventListener("keydown", guardTitleEvents, true);
+    document.addEventListener("beforeinput", guardTitleEvents, true);
+    document.addEventListener("input", guardTitleEvents, true);
+    document.addEventListener("compositionstart", guardTitleEvents, true);
+    document.addEventListener("compositionupdate", guardTitleEvents, true);
+    document.addEventListener("compositionend", guardTitleEvents, true);
+    document.addEventListener("keydown", guardEmptyCalloutEnter, true);
+
     document
       .querySelectorAll('.callout[data-type="NodeCallout"]')
       .forEach(initCallout);
