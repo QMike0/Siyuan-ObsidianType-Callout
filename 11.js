@@ -1,3 +1,4 @@
+// 实现折叠、自定义标题等功能的 JS
 // version 0.0.4
 // 0.0.4 修复Callout中无正文时的一些操作会触发的bug，并优化”空Callout回车键删除“后的撤回操作
 // 0.0.3 增加样式 Info、Quote、Question

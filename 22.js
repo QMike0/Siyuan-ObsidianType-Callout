@@ -1,6 +1,7 @@
+// 实现自动补全功能的 JS（可选）
 // version 0.0.3
-// 0.0.3 限制补全菜单只能在引述块中触发，而非任意容器块；根据个人习惯，触发方式改为 [ 或 【；修改补全菜单的样式；增加样式 Info、Quote、Question
-// 0.0.2 修复从 callout 块撤回到引述块会引发的 Block Not Found 的 BUG
+// 0.0.3 增加样式 Info、Quote、Question
+// 0.0.2 修复从 callout 块撤回到引述块会引发的 Block Not Found 的 BUG；限制补全菜单只能在引述块中触发，而非任意容器块；根据个人习惯，触发方式改为 [ 或 【；修改补全菜单的样式；
 
 (function () {
     'use strict';

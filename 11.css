@@ -1,3 +1,5 @@
+/* Callout块样式优化——修改基础和折叠样式 */
+
 :root[data-theme-mode="dark"] {
     --callout-bg-mix: transparent 85%;
     --callout-text-mix: white 10%;
