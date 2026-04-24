@@ -1,28 +1,46 @@
 // 实现自动补全功能的 JS（可选）
-// version 0.0.3
+// version 0.0.4
+// 0.0.4 参考思源斜杠菜单，优化补全菜单触发逻辑，实现仅在引述块为空时输入[或【才触发、以及鼠标点击其他位置会自动关闭菜单等特性；删除[或【会自动关闭菜单
 // 0.0.3 增加样式 Info、Quote、Question
-// 0.0.2 修复从 callout 块撤回到引述块会引发的 Block Not Found 的 BUG；限制补全菜单只能在引述块中触发，而非任意容器块；根据个人习惯，触发方式改为 [ 或 【；修改补全菜单的样式；
+// 0.0.2 修复从 callout 块撤回到引述块会引发的 Block Not Found 的 BUG；限制补全菜单只能在引述块中触发，而非任意容器块；根据个人习惯，触发方式改为[或【；修改补全菜单的样式；
 
-(function () {
+(function() {
     'use strict';
     const DEBUG = true;
     function log(...args) { if (DEBUG) console.log('[CalloutCompletion]', ...args); }
-
+    
     // 1. 修改这里：将 type 的值改为你希望显示的默认标题格式 (首字母大写)
     // 注意：原有的官方类型 (NOTE/TIP等) 建议保持全大写以确保最佳兼容性，
     // 但自定义类型 (Quote/Question) 可以按需修改。
     const CALLOUT_TYPES = [
-        { type: 'Info', label: 'Info', icon: 'ℹ️' },
-        { type: 'NOTE', label: 'Note', icon: '🖊️' },
+        { type: 'Info',      label: 'Info',      icon: 'ℹ️' },
+        { type: 'NOTE',      label: 'Note',      icon: '🖊️' },
         { type: 'IMPORTANT', label: 'Important', icon: '✨' },
-        { type: 'Quote', label: 'Quote', icon: '❞' }, // 改为首字母大写
-        { type: 'TIP', label: 'Tip', icon: '💡' },
-        { type: 'WARNING', label: 'Warning', icon: '⚠️' },
-        { type: 'CAUTION', label: 'Caution', icon: '🚨' },
-        { type: 'Question', label: 'Question', icon: '❓' }, // 改为首字母大写
+        { type: 'Quote',     label: 'Quote',     icon: '❞' }, // 改为首字母大写
+        { type: 'TIP',       label: 'Tip',       icon: '💡' },
+        { type: 'WARNING',   label: 'Warning',   icon: '⚠️' },
+        { type: 'CAUTION',   label: 'Caution',   icon: '🚨' },
+        { type: 'Question',  label: 'Question',  icon: '❓' }, // 改为首字母大写
     ];
+    const TRIGGER_PATTERN = /[\[【［]([a-zA-Z]*)$/i;
+    const SESSION_TRIGGER_PATTERN = /^[\[【［]([a-zA-Z]*)$/i;
+
+    function isTriggerChar(ch) {
+        return ch === '[' || ch === '【' || ch === '［';
+    }
 
     let isComposing = false;
+    const triggerSession = {
+        active: false,
+        node: null,
+        start: -1,
+    };
+
+    function resetTriggerSession() {
+        triggerSession.active = false;
+        triggerSession.node = null;
+        triggerSession.start = -1;
+    }
 
     // 判断是否在 blockquote 内
     function isInBlockquote(node) {
@@ -37,6 +55,77 @@
         return false;
     }
 
+    function getBlockquoteElement(node) {
+        if (!node) return null;
+        let current = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+        while (current && current !== document.body) {
+            if (current.classList && current.classList.contains('bq')) {
+                return current;
+            }
+            current = current.parentElement;
+        }
+        return null;
+    }
+
+    function isQuoteEffectivelyEmptyForCompletion(quoteEl, focusNode, cursorOffset) {
+        if (!quoteEl) return false;
+
+        const triggerInfo = (() => {
+            if (!focusNode || focusNode.nodeType !== Node.TEXT_NODE) return null;
+            const text = focusNode.textContent || '';
+            const textBeforeCursor = text.substring(0, cursorOffset);
+            const match = textBeforeCursor.match(TRIGGER_PATTERN);
+            if (!match) return null;
+            return {
+                start: textBeforeCursor.lastIndexOf(match[0]),
+                end: cursorOffset,
+                text: match[0],
+            };
+        })();
+
+        let hasRealContent = false;
+
+        const walk = (node) => {
+            if (!node || hasRealContent) return;
+
+            if (node.nodeType === Node.TEXT_NODE) {
+                const text = node.textContent || '';
+                const normalized = text.replace(/[\u200B\u00A0]/g, '').trim();
+                if (!normalized) return;
+
+                // The currently typed trigger sequence (e.g. "[" or "【abc") should not count as content.
+                if (node === focusNode && triggerInfo) {
+                    const beforeTrigger = text.slice(0, triggerInfo.start).replace(/[\u200B\u00A0]/g, '').trim();
+                    const afterCursor = text.slice(triggerInfo.end).replace(/[\u200B\u00A0]/g, '').trim();
+                    if (!beforeTrigger && !afterCursor) return;
+                }
+
+                hasRealContent = true;
+                return;
+            }
+
+            if (node.nodeType !== Node.ELEMENT_NODE) return;
+
+            const el = node;
+            if (el.matches?.('img,video,audio,iframe,svg,canvas,table,hr,math,pre,code,input,button,select,textarea,embed,object,figure,figcaption,attachment-file,span[data-type],span[data-subtype]')) {
+                hasRealContent = true;
+                return;
+            }
+
+            for (const child of el.childNodes) {
+                walk(child);
+                if (hasRealContent) return;
+            }
+        };
+
+        for (const child of quoteEl.childNodes) {
+            walk(child);
+            if (hasRealContent) return false;
+        }
+
+        return true;
+    }
+
     function applyTransform(selectedType) {
         const selection = window.getSelection();
         if (!selection.rangeCount) return;
@@ -44,23 +133,23 @@
         const textNode = range.startContainer;
         if (textNode.nodeType !== Node.TEXT_NODE) return;
         const content = textNode.textContent;
-        const match = content.match(/[\[【]([a-zA-Z]*)$/i);
+        const match = content.match(TRIGGER_PATTERN);
         if (!match) return;
 
         const startOffset = content.lastIndexOf(match[0]);
-
+        
         // 2. 修改这里：去掉了 .toUpperCase()
         // 现在它会直接使用上面数组中定义的格式 (例如 "Citation")
         // 生成结果将是: [!Citation]
         const replacement = `[!${selectedType}]\n`;
-
+        
         range.setStart(textNode, startOffset);
         range.setEnd(textNode, content.length);
         range.deleteContents();
-
+        
         const newNode = document.createTextNode(replacement);
         range.insertNode(newNode);
-
+        
         range.setStartAfter(newNode);
         range.collapse(true);
         selection.removeAllRanges();
@@ -95,12 +184,12 @@
             const protyle = block.closest('.protyle');
             if (!protyle) return;
             this.init(protyle);
-            this.filtered = CALLOUT_TYPES.filter(t =>
+            this.filtered = CALLOUT_TYPES.filter(t => 
                 t.type.toLowerCase().includes(filterText.toLowerCase()) ||
                 t.label.toLowerCase().includes(filterText.toLowerCase())
             );
             if (this.filtered.length === 0) return this.hide();
-
+            
             this.isVisible = true;
             this.index = 0;
             this.render();
@@ -112,7 +201,7 @@
             this.filtered.forEach((item, i) => {
                 const btn = document.createElement('button');
                 btn.className = `b3-list-item b3-list-item--two ${i === this.index ? 'b3-list-item--focus' : ''}`;
-
+                
                 btn.innerHTML = `
                     <div class="b3-list-item__first" style="display:flex; align-items:center; gap:0px;">
                         <span class="b3-list-item__graphic" style="width:10px; flex-shrink:0; text-align:center;">${item.icon}</span>
@@ -158,46 +247,104 @@
             const selected = this.filtered[selectedIndex];
             if (selected) {
                 this.hide();
+                resetTriggerSession();
                 applyTransform(selected.type);
             }
         }
     };
 
-    function handleInput() {
+    function handleInput(e) {
         const sel = window.getSelection();
-        if (!sel || !sel.rangeCount) return;
+        if (!sel || !sel.rangeCount) {
+            menu.hide();
+            resetTriggerSession();
+            return;
+        }
         const focusNode = sel.focusNode;
-        if (focusNode?.nodeType !== Node.TEXT_NODE) return;
-
+        if (focusNode?.nodeType !== Node.TEXT_NODE) {
+            menu.hide();
+            resetTriggerSession();
+            return;
+        }
+        
         if (!isInBlockquote(focusNode)) {
             menu.hide();
+            resetTriggerSession();
             return;
         }
 
-        const text = focusNode.textContent;
+        const quoteEl = getBlockquoteElement(focusNode);
         const cursorOffset = sel.focusOffset;
+        if (!isQuoteEffectivelyEmptyForCompletion(quoteEl, focusNode, cursorOffset)) {
+            if (menu.isVisible) menu.hide();
+            resetTriggerSession();
+            return;
+        }
+
+        const text = focusNode.textContent || '';
         const textBeforeCursor = text.substring(0, cursorOffset);
-        const match = textBeforeCursor.match(/[\[【]([a-zA-Z]*)$/i);
+
+        // If there is an active trigger session, only update/hide based on that session.
+        if (triggerSession.active) {
+            if (focusNode !== triggerSession.node || cursorOffset < triggerSession.start) {
+                menu.hide();
+                resetTriggerSession();
+                return;
+            }
+
+            const segment = text.slice(triggerSession.start, cursorOffset);
+            const sessionMatch = segment.match(SESSION_TRIGGER_PATTERN);
+            if (!sessionMatch) {
+                menu.hide();
+                resetTriggerSession();
+                return;
+            }
+
+            const rect = sel.getRangeAt(0).getBoundingClientRect();
+            const block = focusNode.parentElement?.closest('[data-node-id]');
+            menu.show(sessionMatch[1], rect, block || focusNode.parentElement);
+            return;
+        }
+
+        // Open only when the current input event explicitly inserts trigger chars.
+        const insertedText = e?.data || '';
+        const lastChar = textBeforeCursor.slice(-1);
+        const isInsertInput = typeof e?.inputType === 'string' && e.inputType.startsWith('insert');
+        const isTriggerInput = isInsertInput && (
+            isTriggerChar(insertedText) ||
+            (isTriggerChar(lastChar) && (!insertedText || insertedText === lastChar))
+        );
+        if (!isTriggerInput) {
+            if (menu.isVisible) menu.hide();
+            return;
+        }
+
+        const match = textBeforeCursor.match(TRIGGER_PATTERN);
 
         if (match) {
+            triggerSession.active = true;
+            triggerSession.node = focusNode;
+            triggerSession.start = textBeforeCursor.lastIndexOf(match[0]);
             const rect = sel.getRangeAt(0).getBoundingClientRect();
             const block = focusNode.parentElement?.closest('[data-node-id]');
             menu.show(match[1], rect, block || focusNode.parentElement);
         } else {
             if (menu.isVisible) menu.hide();
+            resetTriggerSession();
         }
     }
 
     function setupListeners() {
         document.body.addEventListener('input', (e) => {
             if (isComposing) return;
-            handleInput();
+            handleInput(e);
         }, true);
 
         document.body.addEventListener('compositionstart', () => { isComposing = true; });
-        document.body.addEventListener('compositionend', () => {
-            isComposing = false;
-            setTimeout(handleInput, 10);
+        document.body.addEventListener('compositionend', () => { 
+            isComposing = false; 
+            // composition end can update an existing trigger session, but should not create a new one.
+            setTimeout(() => handleInput(undefined), 10);
         });
 
         document.body.addEventListener('keydown', (e) => {
@@ -216,13 +363,26 @@
                     menu.apply();
                 } else if (e.key === 'Escape') {
                     menu.hide();
+                    resetTriggerSession();
                 }
             }
         }, true);
 
         document.body.addEventListener('mousedown', (e) => {
-            if (menu.element && !menu.element.contains(e.target)) menu.hide();
+            if (menu.element && !menu.element.contains(e.target)) {
+                menu.hide();
+                resetTriggerSession();
+            }
         });
+
+        document.addEventListener('selectionchange', () => {
+            if (!triggerSession.active) return;
+            const sel = window.getSelection();
+            if (!sel || !sel.rangeCount || sel.focusNode !== triggerSession.node) {
+                menu.hide();
+                resetTriggerSession();
+            }
+        }, true);
     }
 
     log("Callout Completion - Simple Format [!Type]");
