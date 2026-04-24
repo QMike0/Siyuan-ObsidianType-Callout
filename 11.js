@@ -1,6 +1,7 @@
 // 实现折叠、自定义标题等功能的 JS
-// version 0.0.4
-// 0.0.4 修复Callout中无正文时的一些操作会触发的bug，并优化”空Callout回车键删除“后的撤回操作
+// version 0.0.5
+// 0.0.5 优化代码，解决“空Callout回车键删除”操作潜在的模拟按键与 API 调用的竞态问题
+// 0.0.4 修复Callout中无正文时的一些操作（修改标题、正文回车）会触发的bug，并优化“空Callout回车键删除”后的撤回操作
 // 0.0.3 增加样式 Info、Quote、Question
 // 0.0.2 实现折叠/展开状态的持久化
 
@@ -12,6 +13,7 @@
     if (DEBUG) console.log("[CalloutEnhance]", ...args);
   }
 
+  // 修改了这里：增加了 Quote 和 Question
   const CALLOUT_TYPES = [
     { type: 'Info', label: 'Info', icon: 'ℹ️' },
     { type: "NOTE", label: "Note", icon: "🖊️" },
@@ -34,10 +36,6 @@
     const selection = window.getSelection();
     selection.removeAllRanges();
     selection.addRange(range);
-  }
-
-  function wait(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   function closestTitleFromTarget(target) {
@@ -124,6 +122,43 @@
     target.dispatchEvent(keyupEvent);
 
     return true;
+  }
+
+  async function waitForNativeEmptyCalloutHandling(callout, timeout = 320) {
+    if (!callout) return false;
+
+    const isHandled = () => {
+      if (!document.body.contains(callout)) return true;
+      return hasCalloutBody(callout);
+    };
+
+    if (isHandled()) return true;
+
+    return new Promise((resolve) => {
+      let settled = false;
+
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        observer.disconnect();
+        clearTimeout(timer);
+        resolve(value);
+      };
+
+      const observer = new MutationObserver(() => {
+        if (isHandled()) finish(true);
+      });
+
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
+
+      const timer = setTimeout(() => {
+        finish(isHandled());
+      }, timeout);
+    });
   }
 
 
@@ -446,11 +481,24 @@
     if (window[STARTUP_FLAG]) return;
     window[STARTUP_FLAG] = true;
 
+    const isUndoRedoShortcut = (e) => {
+      if (!e || e.type !== "keydown") return false;
+      const key = (e.key || "").toLowerCase();
+      const withModifier = e.ctrlKey || e.metaKey;
+      if (!withModifier) return false;
+      // Win/Linux: Ctrl+Z undo, Ctrl+Y redo; macOS: Cmd+Z undo, Cmd+Shift+Z redo.
+      return key === "z" || key === "y";
+    };
+
     const guardTitleEvents = (e) => {
       const titleEl = closestTitleFromTarget(e.target);
       if (!titleEl) return;
 
       if (e.type === "keydown" && e.key === "Enter") {
+        return;
+      }
+
+      if (isUndoRedoShortcut(e)) {
         return;
       }
 
@@ -470,9 +518,11 @@
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
-      triggerBackspaceForEmptyCallout(callout, e.target);
-      await wait(120);
-      if (document.body.contains(callout)) {
+      const dispatched = triggerBackspaceForEmptyCallout(callout, e.target);
+      const nativeHandled = dispatched
+        ? await waitForNativeEmptyCalloutHandling(callout)
+        : false;
+      if (!nativeHandled && document.body.contains(callout)) {
         await deleteCallout(callout);
       }
       log('Global Enter rerouted to minimal Backspace flow for empty callout with delete fallback');
