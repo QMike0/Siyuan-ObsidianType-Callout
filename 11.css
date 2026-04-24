@@ -1,4 +1,6 @@
 /* Callout块样式优化——修改基础和折叠样式 */
+/* version 0.0.2 */
+/* 0.0.2 优化callout折叠/展开状态下的标题与icon位置，防止抖动；增加折叠/展开动作的上拉/下拉动画 */
 
 :root[data-theme-mode="dark"] {
     --callout-bg-mix: transparent 85%;
@@ -11,6 +13,8 @@
 }
 
 .callout[data-type="NodeCallout"] {
+    --callout-fold-duration: 140ms;
+    --callout-fold-easing: cubic-bezier(.25, .8, .25, 1);
     padding: 4px;
     border: none !important;
     /* 去除外边框 */
@@ -58,6 +62,7 @@
 
     .callout-info {
         padding-left: 30px;
+        min-height: 28px;
 
         .callout-title {
             font-size: 100%;
@@ -69,24 +74,29 @@
         }
     }
 
+    /* 正文区域动画：避免折叠/展开时头部位置跳动 */
+    &>*:not(:first-child) {
+        overflow: hidden;
+        max-height: 1200px;
+        transition:
+            max-height var(--callout-fold-duration) var(--callout-fold-easing);
+        will-change: max-height;
+    }
+
     /* 折叠样式 */
     &[fold="1"] {
         height: auto !important;
         overflow: visible !important;
-        padding-top: 6px;
-        padding-bottom: 8px !important;
-        /* 调整折叠后的底部间距 */
+        padding-top: 4px;
+        padding-bottom: 4px !important;
+        /* 与展开态保持一致，避免标题和 icon 垂直跳动 */
         opacity: 1 !important;
         background-image: none !important;
+    }
 
-        /* 去除斜纹 */
-        &::before {
-            top: 9px;
-        }
-
-        &>*:not(:first-child) {
-            display: none;
-        }
+    &[fold="1"]>*:not(:first-child) {
+        max-height: 0 !important;
+        pointer-events: none;
     }
 
     &>.callout-info::after {
@@ -100,7 +110,7 @@
         mask-repeat: no-repeat;
         mask-size: contain;
         transform: translateY(-50%) rotate(90deg);
-        transition: transform 0.2s ease-in-out;
+        transition: transform var(--callout-fold-duration) var(--callout-fold-easing);
         background-color: currentColor;
         cursor: pointer;
     }

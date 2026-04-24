@@ -1,9 +1,16 @@
 ## 概述
 
+- 参考obsidian callout，优化思源笔记中的callout块（提示块）样式，实现折叠/展开、自定义标题、自动补全等功能
 - 需要同时搭配CSS和JS
 - 对应[这个帖子](https://ld246.com/article/1767934013206)，已修改[原帖子](https://ld246.com/article/1767798793678)中的代码，以适配Savor主题
 
 ## 更新记录
+
+- 20260424更新：
+
+  - 更改`11.css`（version 0.0.2）:
+    - 优化callout折叠/展开状态下的标题与icon位置，防止抖动；
+    - 增加折叠/展开动作的上拉/下拉动画
 
 - 20260422 更新：
 
@@ -12,13 +19,15 @@
 
 - 20260131 更新：
 
-  更改`11.json`（version 0.0.3）和`22.json`（version 0.0.3），根据个人需求，在原基础上增加了几个 callout 新样式：
+  - 更改`11.json`（version 0.0.3）和`22.json`（version 0.0.3），根据个人需求，在原基础上增加了几个 callout 新样式：
 
-  - Info（蓝色）
-  - Quote（灰色）
-  - Question（黄色，同 Warning）
+    - Info（蓝色）
 
-  需要注意这几个新样式转换回官方 callout 后存在问题（即关闭 css 代码片段），会变成背景透明、且 ICON 消失的 callout。介意的话慎用！
+    - Quote（灰色）
+
+    - Question（黄色，同 Warning）
+
+    需要注意这几个新样式转换回官方 callout 后存在问题（即关闭 css 代码片段），会变成背景透明、且 ICON 消失的 callout。介意的话慎用！
 
 - 20260114 更新：
 
