@@ -1,6 +1,7 @@
 // 实现自动补全功能的 JS（可选）
-// version 0.0.4
-// 0.0.4 参考思源斜杠菜单，优化补全菜单触发逻辑，实现仅在引述块为空时输入[或【才触发、以及鼠标点击其他位置会自动关闭菜单等特性；删除[或【会自动关闭菜单
+// version 0.0.5
+// 0.0.5 优化代码，解决 DOM 节点泄漏、isInBlockquote 与 getBlockquoteElement 函数冗余、DOM 随着每次输入都遍历等问题
+// 0.0.4 参考思源斜杠菜单，优化补全菜单触发逻辑，实现仅在引述块为空时输入[或【才触发、以及鼠标点击其他位置会使关闭菜单等特性；删除[或【关闭菜单
 // 0.0.3 增加样式 Info、Quote、Question
 // 0.0.2 修复从 callout 块撤回到引述块会引发的 Block Not Found 的 BUG；限制补全菜单只能在引述块中触发，而非任意容器块；根据个人习惯，触发方式改为[或【；修改补全菜单的样式；
 
@@ -40,19 +41,6 @@
         triggerSession.active = false;
         triggerSession.node = null;
         triggerSession.start = -1;
-    }
-
-    // 判断是否在 blockquote 内
-    function isInBlockquote(node) {
-        if (!node) return false;
-        let current = node;
-        while (current && current !== document.body) {
-            if (current.classList && current.classList.contains('bq')) {
-                return true;
-            }
-            current = current.parentElement;
-        }
-        return false;
     }
 
     function getBlockquoteElement(node) {
@@ -172,11 +160,20 @@
 
         init(protyle) {
             if (this.element && this.currentProtyle === protyle) return;
+
+            // Avoid leaking stale menu nodes when editor/protyle context changes.
+            if (this.element && this.currentProtyle !== protyle) {
+                this.element.remove();
+                this.element = null;
+            }
+
             this.currentProtyle = protyle;
-            this.element = document.createElement('div');
-            this.element.className = 'protyle-hint b3-list b3-list--background hint--menu fn__none';
-            this.element.style.cssText = 'position:fixed; z-index:9999; min-width:160px; box-shadow: var(--b3-dialog-shadow);';
-            protyle.appendChild(this.element);
+            if (!this.element) {
+                this.element = document.createElement('div');
+                this.element.className = 'protyle-hint b3-list b3-list--background hint--menu fn__none';
+                this.element.style.cssText = 'position:fixed; z-index:9999; min-width:160px; box-shadow: var(--b3-dialog-shadow);';
+                protyle.appendChild(this.element);
+            }
             this.hide();
         },
 
@@ -267,20 +264,14 @@
             return;
         }
         
-        if (!isInBlockquote(focusNode)) {
+        const quoteEl = getBlockquoteElement(focusNode);
+        if (!quoteEl) {
             menu.hide();
             resetTriggerSession();
             return;
         }
 
-        const quoteEl = getBlockquoteElement(focusNode);
         const cursorOffset = sel.focusOffset;
-        if (!isQuoteEffectivelyEmptyForCompletion(quoteEl, focusNode, cursorOffset)) {
-            if (menu.isVisible) menu.hide();
-            resetTriggerSession();
-            return;
-        }
-
         const text = focusNode.textContent || '';
         const textBeforeCursor = text.substring(0, cursorOffset);
 
@@ -288,6 +279,12 @@
         if (triggerSession.active) {
             if (focusNode !== triggerSession.node || cursorOffset < triggerSession.start) {
                 menu.hide();
+                resetTriggerSession();
+                return;
+            }
+
+            if (!isQuoteEffectivelyEmptyForCompletion(quoteEl, focusNode, cursorOffset)) {
+                if (menu.isVisible) menu.hide();
                 resetTriggerSession();
                 return;
             }
@@ -316,6 +313,13 @@
         );
         if (!isTriggerInput) {
             if (menu.isVisible) menu.hide();
+            return;
+        }
+
+        // Expensive deep traversal: only run when user just entered a trigger char.
+        if (!isQuoteEffectivelyEmptyForCompletion(quoteEl, focusNode, cursorOffset)) {
+            if (menu.isVisible) menu.hide();
+            resetTriggerSession();
             return;
         }
 
