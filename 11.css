@@ -1,5 +1,6 @@
 /* Callout块样式优化——修改基础和折叠样式 */
-/* version 0.0.2 */
+/* version 0.0.3 */
+/* 0.0.3 约束callout在flex容器里的拉伸，避免它的展开/折叠高度受到在水平布局超级块中同级块高度的影响 */
 /* 0.0.2 优化callout折叠/展开状态下的标题与icon位置，防止抖动；增加折叠/展开动作的上拉/下拉动画 */
 
 :root[data-theme-mode="dark"] {
@@ -16,6 +17,9 @@
     --callout-fold-duration: 140ms;
     --callout-fold-easing: cubic-bezier(.25, .8, .25, 1);
     padding: 4px;
+    width: 100%;
+    box-sizing: border-box;
+    align-self: flex-start;
     border: none !important;
     /* 去除外边框 */
     box-shadow: none !important;
@@ -85,6 +89,8 @@
 
     /* 折叠样式 */
     &[fold="1"] {
+        width: 100%;
+        align-self: flex-start !important;
         height: auto !important;
         overflow: visible !important;
         padding-top: 4px;

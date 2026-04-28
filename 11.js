@@ -1,5 +1,6 @@
 // 实现折叠、自定义标题等功能的 JS
-// version 0.0.5
+// version 0.0.6
+// 0.0.6 修复切换Callout类型后，刷新该笔记页又回到原Callout类型的问题
 // 0.0.5 优化代码，解决“空Callout回车键删除”操作潜在的模拟按键与 API 调用的竞态问题
 // 0.0.4 修复Callout中无正文时的一些操作（修改标题、正文回车）会触发的bug，并优化“空Callout回车键删除”后的撤回操作
 // 0.0.3 增加样式 Info、Quote、Question
@@ -240,6 +241,38 @@
   }
 
   /**
+   * 通过官方 API 设置 Callout 的 subtype 属性（写入 IAL）
+   * @param {string} blockId 
+   * @param {string} subtype 
+   */
+  async function setCalloutSubtype(blockId, subtype) {
+    if (!blockId || !subtype) return false;
+    try {
+      const response = await fetch("/api/attr/setBlockAttrs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: blockId,
+          attrs: {
+            "custom-type": subtype.toUpperCase()  // 存储为自定义属性
+          }
+        })
+      });
+      const result = await response.json();
+      if (result.code === 0) {
+        log(`Callout subtype saved to IAL: ${subtype}`);
+        return true;
+      } else {
+        console.warn("setCalloutSubtype failed:", result.msg);
+        return false;
+      }
+    } catch (err) {
+      console.error("setCalloutSubtype error:", err);
+      return false;
+    }
+  }
+
+  /**
    * 同步块到思源后端（保持原函数，但现在折叠状态已分离）
    */
   async function syncBlock(blockElement) {
@@ -339,7 +372,8 @@
       if (!this.activeBlock) return;
       this.activeBlock.dataset.subtype = newType.toUpperCase();
       log("Type updated to:", newType);
-      syncBlock(this.activeBlock);
+      // 直接通过 IAL API 保存 subtype，而不是通过 syncBlock
+      setCalloutSubtype(this.activeBlock.dataset.nodeId, newType);
       this.hide();
     },
   };
@@ -351,6 +385,13 @@
       deletedBlockIds.delete(block.dataset.nodeId);
       deletingBlockIds.delete(block.dataset.nodeId);
       delete block.dataset.deleting;
+    }
+
+    // 从 IAL 中读取并恢复 custom-type（subtype）
+    const customType = block.getAttribute("custom-type");
+    if (customType) {
+      block.dataset.subtype = customType;
+      log("Restored subtype from IAL:", customType);
     }
 
     const titleEl = block.querySelector(".callout-title");
