@@ -1,9 +1,9 @@
 // 实现折叠、自定义标题等功能的 JS
 // version 0.0.6
-// 0.0.6 修复切换Callout类型后，刷新该笔记页又回到原Callout类型的问题
-// 0.0.5 优化代码，解决“空Callout回车键删除”操作潜在的模拟按键与 API 调用的竞态问题
+// 0.0.6 修复切换Callout类型后，刷新该笔记页又回到原Callout类型的问题；优化Asri主题下的切换菜单样式和交互体验，同样适配其他主题
+// 0.0.5 优化代码，修复“空Callout回车键删除”操作潜在的模拟按键与 API 调用的竞态问题
 // 0.0.4 修复Callout中无正文时的一些操作（修改标题、正文回车）会触发的bug，并优化“空Callout回车键删除”后的撤回操作
-// 0.0.3 增加样式 Info、Quote、Question
+// 0.0.3 增加样式 Info、Quote、Question。但注意这几个新样式转换回官方callout后由于不存在对应类型，背景会变成白色
 // 0.0.2 实现折叠/展开状态的持久化
 
 (function () {
@@ -332,7 +332,7 @@
       if (this.element) return;
       this.element = document.createElement("div");
       this.element.className = "protyle-hint b3-list b3-list--background hint--menu fn__none";
-      this.element.style.cssText = "position:fixed; z-index:9999; min-width:160px; box-shadow: var(--b3-dialog-shadow);";
+      this.element.style.cssText = "position:fixed; z-index:9999; min-width:160px; padding:6px; box-shadow: var(--b3-dialog-shadow);";
       document.body.appendChild(this.element);
     },
     show(block, x, y) {
@@ -343,18 +343,10 @@
         const btn = document.createElement("button");
         btn.className = "b3-list-item b3-list-item--two";
         btn.innerHTML = `
-          <div class="b3-list-item__first">
-            <span class="b3-list-item__graphic">${item.icon}</span>
-            <span class="b3-list-item__text">${item.label}</span>
+          <div class="b3-list-item__first" style="display:flex; align-items:center; gap:4px;">
+            <span class="b3-list-item__graphic" style="width:20px; flex-shrink:0; text-align:center; font-size:16px; border:none; background:transparent;">${item.icon}</span>
+            <span class="b3-list-item__text" style="font-size:15px;">${item.label}</span>
           </div>`;
-        const textEl = btn.querySelector('.b3-list-item__text');
-        if (textEl) textEl.style.fontSize = '15px';
-        const graphicEl = btn.querySelector('.b3-list-item__graphic');
-        if (graphicEl) {
-          graphicEl.style.border = 'none';
-          graphicEl.style.background = 'transparent';
-          graphicEl.style.fontSize = '15px';
-        }
         btn.onclick = (e) => {
           e.stopPropagation();
           this.apply(item.type);

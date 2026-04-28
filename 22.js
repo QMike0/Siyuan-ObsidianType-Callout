@@ -1,5 +1,6 @@
 // 实现自动补全功能的 JS（可选）
-// version 0.0.5
+// version 0.0.6
+// 0.0.6 优化Asri主题下的补全菜单样式和交互体验，同样适配其他主题
 // 0.0.5 优化代码，解决 DOM 节点泄漏、isInBlockquote 与 getBlockquoteElement 函数冗余、DOM 随着每次输入都遍历等问题
 // 0.0.4 参考思源斜杠菜单，优化补全菜单触发逻辑，实现仅在引述块为空时输入[或【才触发、以及鼠标点击其他位置会使关闭菜单等特性；删除[或【关闭菜单
 // 0.0.3 增加样式 Info、Quote、Question
@@ -171,7 +172,7 @@
             if (!this.element) {
                 this.element = document.createElement('div');
                 this.element.className = 'protyle-hint b3-list b3-list--background hint--menu fn__none';
-                this.element.style.cssText = 'position:fixed; z-index:9999; min-width:160px; box-shadow: var(--b3-dialog-shadow);';
+                this.element.style.cssText = 'position:fixed; z-index:9999; min-width:160px; padding:6px; box-shadow: var(--b3-dialog-shadow);';
                 protyle.appendChild(this.element);
             }
             this.hide();
@@ -200,18 +201,10 @@
                 btn.className = `b3-list-item b3-list-item--two ${i === this.index ? 'b3-list-item--focus' : ''}`;
                 
                 btn.innerHTML = `
-                    <div class="b3-list-item__first" style="display:flex; align-items:center; gap:0px;">
-                        <span class="b3-list-item__graphic" style="width:10px; flex-shrink:0; text-align:center;">${item.icon}</span>
-                        <span class="b3-list-item__text">${item.label}</span>
+                    <div class="b3-list-item__first" style="display:flex; align-items:center; gap:4px;">
+                        <span class="b3-list-item__graphic" style="width:20px; flex-shrink:0; text-align:center; font-size:16px; border:none; background:transparent;">${item.icon}</span>
+                        <span class="b3-list-item__text" style="font-size:15px;">${item.label}</span>
                     </div>`;
-
-                const graphic = btn.querySelector('.b3-list-item__graphic');
-                graphic.style.border = 'none';
-                graphic.style.background = 'transparent';
-                graphic.style.fontSize = '15px';
-
-                const text = btn.querySelector('.b3-list-item__text');
-                text.style.fontSize = '15px';
 
                 btn.onmousedown = (e) => {
                     e.preventDefault();
