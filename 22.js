@@ -1,5 +1,6 @@
 // 实现自动补全功能的 JS（可选）
-// version 0.0.6
+// version 0.0.7
+// 0.0.7 实现补全菜单位置的智能调整;修复潜在问题
 // 0.0.6 优化Asri主题下的补全菜单样式和交互体验，同样适配其他主题
 // 0.0.5 优化代码，解决 DOM 节点泄漏、isInBlockquote 与 getBlockquoteElement 函数冗余、DOM 随着每次输入都遍历等问题
 // 0.0.4 参考思源斜杠菜单，优化补全菜单触发逻辑，实现仅在引述块为空时输入[或【才触发、以及鼠标点击其他位置会使关闭菜单等特性；删除[或【关闭菜单
@@ -8,7 +9,7 @@
 
 (function() {
     'use strict';
-    const DEBUG = true;
+    const DEBUG = false;
     function log(...args) { if (DEBUG) console.log('[CalloutCompletion]', ...args); }
     
     // 1. 修改这里：将 type 的值改为你希望显示的默认标题格式 (首字母大写)
@@ -116,40 +117,51 @@
     }
 
     function applyTransform(selectedType) {
-        const selection = window.getSelection();
-        if (!selection.rangeCount) return;
-        const range = selection.getRangeAt(0);
-        const textNode = range.startContainer;
-        if (textNode.nodeType !== Node.TEXT_NODE) return;
-        const content = textNode.textContent;
-        const match = content.match(TRIGGER_PATTERN);
-        if (!match) return;
+        try {
+            const selection = window.getSelection();
+            if (!selection || !selection.rangeCount) return;
+            const range = selection.getRangeAt(0);
+            const textNode = range.startContainer;
+            if (!textNode || textNode.nodeType !== Node.TEXT_NODE) return;
 
-        const startOffset = content.lastIndexOf(match[0]);
-        
-        // 2. 修改这里：去掉了 .toUpperCase()
-        // 现在它会直接使用上面数组中定义的格式 (例如 "Citation")
-        // 生成结果将是: [!Citation]
-        const replacement = `[!${selectedType}]\n`;
-        
-        range.setStart(textNode, startOffset);
-        range.setEnd(textNode, content.length);
-        range.deleteContents();
-        
-        const newNode = document.createTextNode(replacement);
-        range.insertNode(newNode);
-        
-        range.setStartAfter(newNode);
-        range.collapse(true);
-        selection.removeAllRanges();
-        selection.addRange(range);
+            const content = textNode.textContent || '';
+            const match = content.match(TRIGGER_PATTERN);
+            if (!match) return;
 
-        // 模拟回车触发渲染
-        const enterEvent = new KeyboardEvent('keydown', {
-            key: 'Enter', keyCode: 13, code: 'Enter', which: 13,
-            bubbles: true, cancelable: true
-        });
-        textNode.parentElement.dispatchEvent(enterEvent);
+            const startOffset = content.lastIndexOf(match[0]);
+            if (startOffset === -1) return;
+            // Ensure cursor is at or after the trigger
+            if (range.startOffset < startOffset) return;
+
+            const replacement = `[!${selectedType}]\n`;
+
+            // Safely replace the trigger segment
+            const workRange = document.createRange();
+            workRange.setStart(textNode, startOffset);
+            workRange.setEnd(textNode, content.length);
+            workRange.deleteContents();
+
+            const newNode = document.createTextNode(replacement);
+            workRange.insertNode(newNode);
+
+            // Move caret after inserted node
+            const afterRange = document.createRange();
+            afterRange.setStartAfter(newNode);
+            afterRange.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(afterRange);
+
+            // 模拟回车触发渲染（派发到父元素或 document 作为后备）
+            const enterEvent = new KeyboardEvent('keydown', {
+                key: 'Enter', keyCode: 13, code: 'Enter', which: 13,
+                bubbles: true, cancelable: true
+            });
+            const parentEl = newNode.parentElement || textNode.parentElement;
+            if (parentEl && parentEl.dispatchEvent) parentEl.dispatchEvent(enterEvent);
+            else document.dispatchEvent(enterEvent);
+        } catch (err) {
+            if (DEBUG) console.error('[CalloutCompletion] applyTransform error', err);
+        }
     }
 
     const menu = {
@@ -219,12 +231,31 @@
         },
 
         updatePosition(rect) {
-            let top = rect.bottom + 8;
-            if (top + (this.element.offsetHeight || 200) > window.innerHeight) {
-                top = rect.top - (this.element.offsetHeight || 200) - 8;
+            const menuWidth = this.element.offsetWidth || 200;
+            const menuHeight = this.element.offsetHeight || 300;
+            const padding = 8;
+            let top = rect.bottom + padding;
+            let left = rect.left;
+            
+            // 检查下边界
+            if (top + menuHeight + padding > window.innerHeight) {
+                top = rect.top - menuHeight - padding;
             }
+            // 确保上边界不超出视口
+            if (top < padding) {
+                top = padding;
+            }
+            // 检查右边界
+            if (left + menuWidth + padding > window.innerWidth) {
+                left = Math.max(padding, window.innerWidth - menuWidth - padding);
+            }
+            // 检查左边界
+            if (left < padding) {
+                left = padding;
+            }
+            
             this.element.style.top = `${top}px`;
-            this.element.style.left = `${rect.left}px`;
+            this.element.style.left = `${left}px`;
         },
 
         hide() {

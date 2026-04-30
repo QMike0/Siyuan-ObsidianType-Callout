@@ -1,5 +1,6 @@
 // 实现折叠、自定义标题等功能的 JS
-// version 0.0.6
+// version 0.0.7
+// 0.0.7 实现切换菜单位置的智能调整；优化折叠/展开按钮判断逻辑，避免Asri主题下点击按钮进入标题编辑的情况;修复潜在问题
 // 0.0.6 修复切换Callout类型后，刷新该笔记页又回到原Callout类型的问题；优化Asri主题下的切换菜单样式和交互体验，同样适配其他主题
 // 0.0.5 优化代码，修复“空Callout回车键删除”操作潜在的模拟按键与 API 调用的竞态问题
 // 0.0.4 修复Callout中无正文时的一些操作（修改标题、正文回车）会触发的bug，并优化“空Callout回车键删除”后的撤回操作
@@ -347,25 +348,55 @@
             <span class="b3-list-item__graphic" style="width:20px; flex-shrink:0; text-align:center; font-size:16px; border:none; background:transparent;">${item.icon}</span>
             <span class="b3-list-item__text" style="font-size:15px;">${item.label}</span>
           </div>`;
-        btn.onclick = (e) => {
+        btn.onclick = async (e) => {
           e.stopPropagation();
-          this.apply(item.type);
+          await this.apply(item.type);
         };
         this.element.appendChild(btn);
       });
-      this.element.style.top = `${y}px`;
-      this.element.style.left = `${x}px`;
       this.element.classList.remove("fn__none");
+      // 位置智能调整：确保菜单在视口内完整显示
+      setTimeout(() => {
+        const menuWidth = this.element.offsetWidth || 200;
+        const menuHeight = this.element.offsetHeight || 300;
+        const padding = 8;
+        let top = y;
+        let left = x;
+        
+        // 检查下边界
+        if (top + menuHeight + padding > window.innerHeight) {
+          top = Math.max(padding, window.innerHeight - menuHeight - padding);
+        }
+        // 检查上边界
+        if (top < padding) {
+          top = padding;
+        }
+        // 检查右边界
+        if (left + menuWidth + padding > window.innerWidth) {
+          left = Math.max(padding, window.innerWidth - menuWidth - padding);
+        }
+        // 检查左边界
+        if (left < padding) {
+          left = padding;
+        }
+        
+        this.element.style.top = `${top}px`;
+        this.element.style.left = `${left}px`;
+      }, 0);
     },
     hide() {
       if (this.element) this.element.classList.add("fn__none");
     },
-    apply(newType) {
+    async apply(newType) {
       if (!this.activeBlock) return;
       this.activeBlock.dataset.subtype = newType.toUpperCase();
       log("Type updated to:", newType);
       // 直接通过 IAL API 保存 subtype，而不是通过 syncBlock
-      setCalloutSubtype(this.activeBlock.dataset.nodeId, newType);
+      const saved = await setCalloutSubtype(this.activeBlock.dataset.nodeId, newType);
+      if (!saved) {
+        console.warn("Callout subtype save failed, keep menu open:", newType);
+        return;
+      }
       this.hide();
     },
   };
@@ -388,6 +419,8 @@
 
     const titleEl = block.querySelector(".callout-title");
     if (titleEl) {
+      if (titleEl.dataset.calloutTitleBound === "true") return;
+      titleEl.dataset.calloutTitleBound = "true";
       titleEl.contentEditable = "true";
       titleEl.spellcheck = false;
       titleEl.addEventListener("focus", () => {
@@ -510,6 +543,21 @@
     }
   }
 
+  function handleGlobalPointerDown(e) {
+    const callout = e.target.closest('.callout[data-type="NodeCallout"]');
+    if (!callout) return;
+
+    const rect = callout.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const clickY = e.clientY - rect.top;
+
+    // 只要点在 icon / 折叠区域，就提前阻止默认焦点落到 title 上
+    if ((clickX >= 0 && clickX <= 40 && clickY <= 45) || (clickX >= rect.width - 40 && clickY <= 45)) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }
+
   function startup() {
     if (window[STARTUP_FLAG]) return;
     window[STARTUP_FLAG] = true;
@@ -568,6 +616,7 @@
     document.addEventListener("compositionstart", guardTitleEvents, true);
     document.addEventListener("compositionupdate", guardTitleEvents, true);
     document.addEventListener("compositionend", guardTitleEvents, true);
+    document.addEventListener("pointerdown", handleGlobalPointerDown, true);
     document.addEventListener("keydown", guardEmptyCalloutEnter, true);
 
     document
