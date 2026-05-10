@@ -1,5 +1,6 @@
 // 实现折叠、自定义标题等功能的 JS
-// version 0.0.7
+// version 0.0.8
+// 0.0.8 修复Callout标题文字修改的持久化问题（无论有无Callout正文）；修复潜在的代码冗余和问题
 // 0.0.7 实现切换菜单位置的智能调整；优化折叠/展开按钮判断逻辑，避免Asri主题下点击按钮进入标题编辑的情况;修复潜在问题
 // 0.0.6 修复切换Callout类型后，刷新该笔记页又回到原Callout类型的问题；优化Asri主题下的切换菜单样式和交互体验，同样适配其他主题
 // 0.0.5 优化代码，修复“空Callout回车键删除”操作潜在的模拟按键与 API 调用的竞态问题
@@ -9,7 +10,7 @@
 
 (function () {
   "use strict";
-  const DEBUG = false;
+  const DEBUG = true;
   const STARTUP_FLAG = "__calloutEnhanceInitialized";
   function log(...args) {
     if (DEBUG) console.log("[CalloutEnhance]", ...args);
@@ -38,6 +39,12 @@
     const selection = window.getSelection();
     selection.removeAllRanges();
     selection.addRange(range);
+  }
+
+  function ensureCalloutTitleEditable(titleEl) {
+    if (!titleEl) return;
+    titleEl.contentEditable = "true";
+    titleEl.spellcheck = false;
   }
 
   function closestTitleFromTarget(target) {
@@ -178,6 +185,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          reqId: Date.now(),
           session: block.closest('.protyle')?.dataset.id || '',
           app: window.siyuan.config.system.id,
           transactions: [
@@ -274,55 +282,100 @@
   }
 
   /**
-   * 同步块到思源后端（保持原函数，但现在折叠状态已分离）
+   * 同步块到思源后端 - 通过 DOM 更新方式
    */
   async function syncBlock(blockElement) {
-    if (!blockElement || !blockElement.dataset.nodeId) return;
-    const blockId = blockElement.dataset.nodeId;
-    if (deletedBlockIds.has(blockId)) return;
-    if (deletingBlockIds.has(blockId)) return;
-    if (blockElement.dataset.deleting === "true") return;
-    if (!document.body.contains(blockElement)) return;
-    const protyle = blockElement.closest(".protyle");
-    if (!protyle) return;
-
-    // 克隆并清理临时状态
-    const clone = blockElement.cloneNode(true);
-    const titleInClone = clone.querySelector(".callout-title");
-    if (titleInClone) {
-      titleInClone.classList.remove("is-title-editing");
-      titleInClone.removeAttribute("contenteditable");
+    if (!blockElement || !blockElement.dataset.nodeId) {
+      log("syncBlock: Missing blockElement or nodeId");
+      return;
     }
-    clone.classList.remove("protyle-shown");
-    clone.removeAttribute("data-enhanced");
-
-    const payload = {
-      session: protyle.dataset.id || "",
-      app: window.siyuan.config.system.id,
-      transactions: [
-        {
-          doOperations: [
-            {
-              action: "update",
-              id: blockId,
-              data: clone.outerHTML,
-            },
-          ],
-        },
-      ],
-    };
+    const blockId = blockElement.dataset.nodeId;
+    if (deletedBlockIds.has(blockId)) {
+      log("syncBlock: Block already deleted");
+      return;
+    }
+    if (deletingBlockIds.has(blockId)) {
+      log("syncBlock: Block is being deleted");
+      return;
+    }
+    if (blockElement.dataset.deleting === "true") {
+      log("syncBlock: Block marked as deleting");
+      return;
+    }
+    if (!document.body.contains(blockElement)) {
+      log("syncBlock: Block not in DOM");
+      return;
+    }
+    const protyle = blockElement.closest(".protyle");
+    if (!protyle) {
+      log("syncBlock: No protyle found");
+      return;
+    }
 
     try {
+      log(`syncBlock: Starting sync for ${blockId}`);
+      
+      // 方案 A: 尝试通过 updateBlock API（如果思源支持）
+      // 或使用 setBlockMarkdown 更新块内容
+      
+      // 先尝试发送完整的 HTML 更新，但要保留块的所有必要属性
+      const clone = blockElement.cloneNode(true);
+      
+      // 清理临时状态
+      const titleInClone = clone.querySelector(".callout-title");
+      if (titleInClone) {
+        titleInClone.classList.remove("is-title-editing");
+        titleInClone.removeAttribute("contenteditable");
+        titleInClone.removeAttribute("data-callout-title-bound");
+        titleInClone.spellcheck = false;
+      }
+      clone.classList.remove("protyle-shown");
+      clone.removeAttribute("data-enhanced");
+      
+      // 记录要发送的 HTML
+      const htmlToSend = clone.outerHTML;
+      log(`syncBlock: Sending HTML (length: ${htmlToSend.length})`);
+
+      const payload = {
+        reqId: Date.now(),
+        session: protyle.dataset.id || "",
+        app: window.siyuan.config.system.id,
+        transactions: [
+          {
+            doOperations: [
+              {
+                action: "update",
+                id: blockId,
+                data: htmlToSend,
+              },
+            ],
+          },
+        ],
+      };
+
+      log(`syncBlock: Posting transaction...`);
       const res = await fetch("/api/transactions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (res.ok) {
-        log("HTML Sync Success:", blockId);
+
+      const result = await res.json();
+      log(`syncBlock: Response code=${result.code}, msg=${result.msg}`);
+      
+      if (result.code === 0) {
+        log(`✓ Block sync success: ${blockId}`);
+        console.log("[CalloutEnhance] ✓ Title changes saved to database");
+      } else {
+        console.error("[CalloutEnhance] ✗ Sync failed:", result.msg);
+        log(`✗ Block sync failed: ${result.msg}`);
+        
+        // 降级方案：如果 update 失败，尝试通过 IAL 属性保存（如果标题可以作为属性）
+        // 但通常标题是内容，不能作为 IAL 属性，所以这里只是记录
       }
     } catch (e) {
-      console.error("Sync Error:", e);
+      console.error("[CalloutEnhance] syncBlock exception:", e);
+      log(`✗ syncBlock exception: ${e.message}`);
     }
   }
 
@@ -419,19 +472,21 @@
 
     const titleEl = block.querySelector(".callout-title");
     if (titleEl) {
+      ensureCalloutTitleEditable(titleEl);
       if (titleEl.dataset.calloutTitleBound === "true") return;
       titleEl.dataset.calloutTitleBound = "true";
-      titleEl.contentEditable = "true";
-      titleEl.spellcheck = false;
       titleEl.addEventListener("focus", () => {
+        titleEl.dataset.calloutTitleSnapshot = titleEl.textContent || "";
         titleEl.classList.add("is-title-editing");
         placeCaretAtEnd(titleEl);
       });
       titleEl.addEventListener("blur", () => {
         titleEl.classList.remove("is-title-editing");
         if (block.dataset.deleting === "true") return;
-        if (!hasCalloutBody(block)) return;
-        syncBlock(block);
+        const previousTitle = titleEl.dataset.calloutTitleSnapshot ?? "";
+        const currentTitle = titleEl.textContent || "";
+        if (currentTitle === previousTitle) return;
+        requestAnimationFrame(() => syncBlock(block));
       });
       titleEl.addEventListener('keydown', async (e) => {
         if (e.key === 'Enter') {
@@ -535,6 +590,7 @@
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
+      ensureCalloutTitleEditable(titleEl);
       if (document.activeElement !== titleEl) {
         titleEl.focus();
         placeCaretAtEnd(titleEl);
