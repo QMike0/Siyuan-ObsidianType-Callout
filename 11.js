@@ -1,5 +1,6 @@
 // 实现折叠、自定义标题等功能的 JS
-// version 0.0.8
+// version 0.0.9
+// 0.0.9 修复Callout标题修改持久化仍存在的手动失焦、嵌套callout标题保存等问题；优化callout标题回车操作、callout正文多空行时回车操作
 // 0.0.8 修复Callout标题文字修改的持久化问题（无论有无Callout正文）；修复潜在的代码冗余和问题
 // 0.0.7 实现切换菜单位置的智能调整；优化折叠/展开按钮判断逻辑，避免Asri主题下点击按钮进入标题编辑的情况;修复潜在问题
 // 0.0.6 修复切换Callout类型后，刷新该笔记页又回到原Callout类型的问题；优化Asri主题下的切换菜单样式和交互体验，同样适配其他主题
@@ -30,6 +31,8 @@
 
   const deletingBlockIds = new Set();
   const deletedBlockIds = new Set();
+  // 追踪已经绑定事件监听器的标题元素（基于元素引用，能区分撤销恢复生成的新 DOM）
+  const boundTitleEls = new WeakSet();
 
   function placeCaretAtEnd(el) {
     if (!el) return;
@@ -86,6 +89,16 @@
     });
   }
 
+  function getCalloutBodyLineCount(block) {
+    if (!block) return 0;
+
+    const content = block.querySelector?.(".callout-content") || block;
+    return Array.from(content.children).filter((child) => {
+      if (child.classList?.contains("protyle-attr")) return false;
+      return true;
+    }).length;
+  }
+
   function getSelectionCallout() {
     const sel = window.getSelection();
     if (!sel || !sel.rangeCount) return null;
@@ -99,7 +112,6 @@
     const element = target.nodeType === Node.TEXT_NODE ? target.parentElement : target;
     return element?.closest?.('.callout[data-type="NodeCallout"]') || null;
   }
-
   function triggerBackspaceForEmptyCallout(block, sourceTarget) {
     if (!block) return false;
 
@@ -133,90 +145,37 @@
     return true;
   }
 
-  async function waitForNativeEmptyCalloutHandling(callout, timeout = 320) {
-    if (!callout) return false;
-
-    const isHandled = () => {
-      if (!document.body.contains(callout)) return true;
-      return hasCalloutBody(callout);
-    };
-
-    if (isHandled()) return true;
-
-    return new Promise((resolve) => {
-      let settled = false;
-
-      const finish = (value) => {
-        if (settled) return;
-        settled = true;
-        observer.disconnect();
-        clearTimeout(timer);
-        resolve(value);
-      };
-
-      const observer = new MutationObserver(() => {
-        if (isHandled()) finish(true);
-      });
-
-      observer.observe(document.body, {
-        childList: true,
-        subtree: true,
-        characterData: true,
-      });
-
-      const timer = setTimeout(() => {
-        finish(isHandled());
-      }, timeout);
-    });
-  }
-
-
-  async function deleteCallout(block) {
-    if (!block?.dataset?.nodeId) return false;
-    const blockId = block.dataset.nodeId;
-    if (!document.body.contains(block)) return true;
-    if (deletingBlockIds.has(blockId)) return true;
-
-    deletingBlockIds.add(blockId);
-    block.dataset.deleting = "true";
-
-    try {
-      const response = await fetch('/api/transactions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          reqId: Date.now(),
-          session: block.closest('.protyle')?.dataset.id || '',
-          app: window.siyuan.config.system.id,
-          transactions: [
-            {
-              doOperations: [
-                {
-                  action: 'delete',
-                  id: blockId,
-                },
-              ],
-            },
-          ],
-        }),
-      });
-      const result = await response.json();
-      if (result.code === 0) {
-        log('Empty callout deleted on Enter by transaction:', blockId);
-        deletedBlockIds.add(blockId);
-        deletingBlockIds.delete(blockId);
-        setTimeout(() => deletedBlockIds.delete(blockId), 60 * 1000);
-        return true;
-      }
-    } catch (error) {
-      console.error('Delete fallback Error:', error);
+  // 初始化/绑定 callout（幂等）
+  function initCallout(block) {
+    if (block.dataset?.nodeId) {
+      deletedBlockIds.delete(block.dataset.nodeId);
+      deletingBlockIds.delete(block.dataset.nodeId);
+      delete block.dataset.deleting;
     }
 
-    deletingBlockIds.delete(blockId);
-    delete block.dataset.deleting;
-    return false;
-  }
+    // 从 IAL 中读取并恢复 custom-type（subtype）
+    const customType = block.getAttribute("custom-type");
+    if (customType) {
+      block.dataset.subtype = customType;
+      log("Restored subtype from IAL:", customType);
+    }
 
+    const titleEl = block.querySelector(".callout-title");
+    if (!titleEl) {
+      block.dataset.enhanced = "true";
+      return;
+    }
+
+    // 如果这个具体的 title 元素还没有绑定过监听器，则绑定（基于元素引用的 WeakSet）
+    if (!boundTitleEls.has(titleEl)) {
+      try { delete titleEl.dataset.calloutTitleBound; } catch (e) {}
+      ensureCalloutTitleEditable(titleEl);
+      // 不在这里绑定 focus/blur/keydown，改为使用全局事件委托处理，避免 DOM 恢复时绑定丢失。
+      boundTitleEls.add(titleEl);
+    }
+
+    block.dataset.enhanced = "true";
+  }
   /**
    * 通过官方 API 设置块的 fold 属性（写入 IAL）
    * @param {string} blockId 
@@ -454,89 +413,7 @@
     },
   };
 
-  function initCallout(block) {
-    if (block.dataset.enhanced === "true") return;
-
-    if (block.dataset?.nodeId) {
-      deletedBlockIds.delete(block.dataset.nodeId);
-      deletingBlockIds.delete(block.dataset.nodeId);
-      delete block.dataset.deleting;
-    }
-
-    // 从 IAL 中读取并恢复 custom-type（subtype）
-    const customType = block.getAttribute("custom-type");
-    if (customType) {
-      block.dataset.subtype = customType;
-      log("Restored subtype from IAL:", customType);
-    }
-
-    const titleEl = block.querySelector(".callout-title");
-    if (titleEl) {
-      ensureCalloutTitleEditable(titleEl);
-      if (titleEl.dataset.calloutTitleBound === "true") return;
-      titleEl.dataset.calloutTitleBound = "true";
-      titleEl.addEventListener("focus", () => {
-        titleEl.dataset.calloutTitleSnapshot = titleEl.textContent || "";
-        titleEl.classList.add("is-title-editing");
-        placeCaretAtEnd(titleEl);
-      });
-      titleEl.addEventListener("blur", () => {
-        titleEl.classList.remove("is-title-editing");
-        if (block.dataset.deleting === "true") return;
-        const previousTitle = titleEl.dataset.calloutTitleSnapshot ?? "";
-        const currentTitle = titleEl.textContent || "";
-        if (currentTitle === previousTitle) return;
-        requestAnimationFrame(() => syncBlock(block));
-      });
-      titleEl.addEventListener('keydown', async (e) => {
-        if (e.key === 'Enter') {
-          if (!hasCalloutBody(block)) return;
-          e.preventDefault();
-          e.stopPropagation();
-          e.stopImmediatePropagation();
-          const parentID = block.dataset.nodeId;
-          if (block.getAttribute('fold') === '1') {
-            await setFoldState(parentID, false);  // 展开后再插入
-            block.removeAttribute('fold');
-          }
-          // 插入新块逻辑保持不变...
-          try {
-            const response = await fetch('/api/block/insertBlock', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                dataType: "markdown",
-                data: "",
-                parentID: parentID,
-                previousID: ""
-              })
-            });
-            const result = await response.json();
-            if (result.code === 0 && result.data) {
-              const newBlockId = result.data[0].doOperations[0].id;
-              log('Insert Success. New ID:', newBlockId);
-              setTimeout(() => {
-                const newBlockEl = document.querySelector(`[data-node-id="${newBlockId}"] [contenteditable="true"]`);
-                if (newBlockEl) {
-                  newBlockEl.focus();
-                  const range = document.createRange();
-                  const sel = window.getSelection();
-                  range.selectNodeContents(newBlockEl);
-                  range.collapse(false);
-                  sel.removeAllRanges();
-                  sel.addRange(range);
-                }
-              }, 200);
-            }
-          } catch (error) {
-            console.error('Insert API Error:', error);
-          }
-        }
-      });
-    }
-
-    block.dataset.enhanced = "true";
-  }
+  // initCallout 已在文件上方以更健壮的方式实现（使用 WeakSet 跟踪已绑定的 title 元素）
 
   /**
    * 全局点击拦截器 - 折叠部分改用 API
@@ -627,6 +504,21 @@
       return key === "z" || key === "y";
     };
 
+    const handleUndoRedo = (e) => {
+      if (!isUndoRedoShortcut(e)) return;
+      // Ctrl+Z/Y 后，清除所有 callout 的 enhanced 标记，使其被重新初始化
+      setTimeout(() => {
+        document.querySelectorAll('.callout[data-type="NodeCallout"]').forEach((block) => {
+          delete block.dataset.enhanced;
+          const titleEl = block.querySelector(".callout-title");
+          if (titleEl) {
+            delete titleEl.dataset.calloutTitleBound;
+          }
+        });
+        log("All callouts reset for undo/redo recovery");
+      }, 50);
+    };
+
     const guardTitleEvents = (e) => {
       const titleEl = closestTitleFromTarget(e.target);
       if (!titleEl) return;
@@ -646,11 +538,17 @@
     const guardEmptyCalloutEnter = async (e) => {
       if (e.key !== "Enter") return;
 
+      // 如果事件来自标题，直接返回，让标题处理器优先处理
+      if (closestTitleFromTarget(e.target)) return;
+
       const callout =
         getCalloutFromEventTarget(e.target) ||
         getSelectionCallout();
       if (!callout) return;
       if (callout.dataset.deleting === "true") return;
+      // 多个空行时，保留思源原生 Enter 逻辑，避免破坏“非最后一行插入新块 / 最后一行移出 callout”的行为。
+      // 只有一个空行时，仍然走删除分支，保持空 callout 的原有删除行为。
+      if (getCalloutBodyLineCount(callout) > 1) return;
       if (hasCalloutBody(callout)) return;
       e.preventDefault();
       e.stopPropagation();
@@ -666,6 +564,76 @@
       return;
     };
 
+    // 全局委托：处理 title 的 focusin/focusout/keydown（避免单个元素绑定丢失）
+    const handleTitleFocusIn = (e) => {
+      const titleEl = closestTitleFromTarget(e.target);
+      if (!titleEl) return;
+      ensureCalloutTitleEditable(titleEl);
+      titleEl.dataset.calloutTitleSnapshot = titleEl.textContent || "";
+      titleEl.classList.add("is-title-editing");
+    };
+
+    const handleTitleFocusOut = (e) => {
+      const titleEl = closestTitleFromTarget(e.target);
+      if (!titleEl) return;
+      const block = titleEl.closest('.callout');
+      titleEl.classList.remove('is-title-editing');
+      if (!block) return;
+      if (block.dataset.deleting === 'true') return;
+      const previousTitle = titleEl.dataset.calloutTitleSnapshot ?? "";
+      const currentTitle = titleEl.textContent || "";
+      if (currentTitle === previousTitle) return;
+      requestAnimationFrame(() => syncBlock(block));
+    };
+
+    const handleTitleKeydown = (e) => {
+      if (e.key !== 'Enter') return;
+      const titleEl = closestTitleFromTarget(e.target);
+      if (!titleEl) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      const block = titleEl.closest('.callout');
+      if (!block) return;
+      const parentID = block.dataset.nodeId;
+      (async () => {
+        if (block.getAttribute('fold') === '1') {
+          await setFoldState(parentID, false);
+          block.removeAttribute('fold');
+        }
+        try {
+          const response = await fetch('/api/block/insertBlock', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dataType: 'markdown', data: '', parentID: parentID, previousID: '' })
+          });
+          const result = await response.json();
+          if (result.code === 0 && result.data) {
+            const newBlockId = result.data[0].doOperations[0].id;
+            log('Insert Success. New ID:', newBlockId);
+            setTimeout(() => {
+              const newBlockEl = document.querySelector(`[data-node-id="${newBlockId}"] [contenteditable="true"]`);
+              if (newBlockEl) {
+                newBlockEl.focus();
+                const range = document.createRange();
+                const sel = window.getSelection();
+                range.selectNodeContents(newBlockEl);
+                range.collapse(false);
+                sel.removeAllRanges();
+                sel.addRange(range);
+              }
+            }, 200);
+          }
+        } catch (err) {
+          console.error('Insert API Error:', err);
+        }
+      })();
+    };
+
+    document.addEventListener("keydown", handleUndoRedo, true);
+    document.addEventListener("focusin", handleTitleFocusIn, true);
+    document.addEventListener("focusout", handleTitleFocusOut, true);
+    document.addEventListener("keydown", handleTitleKeydown, true);
     document.addEventListener("keydown", guardTitleEvents, true);
     document.addEventListener("beforeinput", guardTitleEvents, true);
     document.addEventListener("input", guardTitleEvents, true);
