@@ -1,8 +1,12 @@
+> [!important]
+>
+> 已将CSS、JS脚本转为插件「siyuan-plugin-callout-enhance」，以实现更全面更稳定的功能。后续不再更新本脚本仓库。
+
 ## 概述
 
-- 参考obsidian callout，优化思源笔记中的callout块（提示块）样式，实现折叠/展开、自定义标题、自动补全等功能
-- 需要同时搭配CSS和JS
-- 对应[这个帖子](https://ld246.com/article/1767934013206)，已修改[原帖子](https://ld246.com/article/1767798793678)中的代码，以适配Savor主题
+- 参考obsidian callout，优化思源笔记中的callout块（提示块）样式，实现折叠/展开、自定义标题、类型菜单&补全菜单等功能
+- 需要同时搭配CSS和JS脚本
+- 对应于[这个帖子](https://ld246.com/article/1767934013206)。已大量修改[原帖子](https://ld246.com/article/1767798793678)中的代码，以适配Savor主题
 
 ## 更新记录
 
