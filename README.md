@@ -1,6 +1,6 @@
 > [!important]
 >
-> 已将CSS、JS脚本转为插件「siyuan-plugin-callout-enhance」，以实现更全面更稳定的功能。后续不再更新本脚本仓库。
+> 已将CSS、JS脚本转为插件「[siyuan-plugin-callout-enhance](https://github.com/QMike0/siyuan-plugin-callout-enhance)」，以实现更全面更稳定的功能。后续不再更新本脚本仓库。
 
 ## 概述
 
