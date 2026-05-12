@@ -1,5 +1,6 @@
 // 实现自动补全功能的 JS（可选）
-// version 0.0.7
+// version 0.0.8
+// 0.0.8 修复下方向键有概率误关闭菜单的问题
 // 0.0.7 实现补全菜单位置的智能调整;修复潜在问题
 // 0.0.6 优化Asri主题下的补全菜单样式和交互体验，同样适配其他主题
 // 0.0.5 优化代码，解决 DOM 节点泄漏、isInBlockquote 与 getBlockquoteElement 函数冗余、DOM 随着每次输入都遍历等问题
@@ -379,10 +380,12 @@
             if (menu.isVisible) {
                 if (e.key === 'ArrowUp') {
                     e.preventDefault();
+                    e.stopImmediatePropagation(); // 增加：防止外部组件监听到此按键
                     menu.index = (menu.index - 1 + menu.filtered.length) % menu.filtered.length;
                     menu.render();
                 } else if (e.key === 'ArrowDown') {
                     e.preventDefault();
+                    e.stopImmediatePropagation(); // 增加：防止外部组件监听到此按键
                     menu.index = (menu.index + 1) % menu.filtered.length;
                     menu.render();
                 } else if (e.key === 'Enter' || e.key === 'Tab') {
